@@ -55,7 +55,7 @@ public class DashboardRepository : IDashboardRepository
         bool isFullYear = (start.Month == 4 && start.Day == 1 && end.Month == 3 && end.Day == 31);
         bool isHistoricalOnly = end < DateTime.UtcNow.Date;
 
-        if (isFullYear || isHistoricalOnly)
+        if (isFullYear)
         {
             var summary = await _db.Set<FySummaryAdmin>().AsNoTracking().FirstOrDefaultAsync(x => x.FinancialYear == fy);
             if (summary != null) return Map(summary);
@@ -76,13 +76,6 @@ public class DashboardRepository : IDashboardRepository
 
     public async Task<DashboardMetrics> GetApproverMetricsAsync(int fy, string ddoCode, DateTime start, DateTime end)
     {
-        bool isHistoricalOnly = end < DateTime.UtcNow.Date;
-        if (isHistoricalOnly)
-        {
-            var summary = await _db.Set<FySummaryApprover>().AsNoTracking().FirstOrDefaultAsync(x => x.FinancialYear == fy && x.DdoCode == ddoCode);
-            if (summary != null) return Map(summary);
-        }
-
         return await _db.Set<DailyLedgerApprover>().AsNoTracking()
             .Where(x => x.FinancialYear == fy && x.DdoCode == ddoCode && x.LedgerDate >= start.Date && x.LedgerDate <= end.Date)
             .GroupBy(x => x.DdoCode)
@@ -98,13 +91,6 @@ public class DashboardRepository : IDashboardRepository
 
     public async Task<DashboardMetrics> GetOperatorMetricsAsync(int fy, string ddoCode, string userId, DateTime start, DateTime end)
     {
-        bool isHistoricalOnly = end < DateTime.UtcNow.Date;
-        if (isHistoricalOnly)
-        {
-            var summary = await _db.Set<FySummaryOperator>().AsNoTracking().FirstOrDefaultAsync(x => x.FinancialYear == fy && x.DdoCode == ddoCode && x.UserId == userId);
-            if (summary != null) return Map(summary);
-        }
-
         return await _db.Set<DailyLedgerOperator>().AsNoTracking()
             .Where(x => x.FinancialYear == fy && x.DdoCode == ddoCode && x.UserId == userId && x.LedgerDate >= start.Date && x.LedgerDate <= end.Date)
             .GroupBy(x => x.UserId)
