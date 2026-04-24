@@ -109,10 +109,10 @@ public class DashboardAggregationWorker : BackgroundService
         var repo = scope.ServiceProvider.GetRequiredService<IDashboardRepository>();
         var svc = scope.ServiceProvider.GetRequiredService<IDashboardUpdateService>();
         var monitor = scope.ServiceProvider.GetRequiredService<Dashboard.BLL.Utilities.IResourceMonitor>();
-        var (cpu, ram, db) = await monitor.GetMetricsAsync();
+        var (sysCpu, sysRam, sysDb) = await monitor.GetMetricsAsync();
         
         // ADAPTIVE DEBOUNCE: Protect hub from storm during high CPU
-        _adaptiveDebounceMs = cpu > 80 ? _debounceMs * 3 : (cpu > 50 ? _debounceMs * 2 : _debounceMs);
+        _adaptiveDebounceMs = sysCpu > 80 ? _debounceMs * 3 : (sysCpu > 50 ? _debounceMs * 2 : _debounceMs);
 
         var today = DateTime.UtcNow.Date;
 
@@ -146,14 +146,15 @@ public class DashboardAggregationWorker : BackgroundService
             // Target: SystemPressure (Exclusive to Admin and Approver DDO)
             if (ev == "BILL_GEN" || ev == "FTO_RCVD" || ev == "BILL_FWD_APP" || ev == "BILL_FWD_TRZ")
             {
-                int load = (cpu + (db * 5)) / 2;
-                var pressurePulse = MapSurgicalPulse("Admin", ev, m.Admin, load, cpu, ram, db);
+                // Ensure local variables are used correctly
+                int currentLoad = (sysCpu + (sysDb * 5)) / 2;
+                var pressurePulse = MapSurgicalPulse("Admin", ev, m.Admin, currentLoad, sysCpu, sysRam, sysDb);
                 
                 await svc.PushPulseAsync("Pressure:Admin", "SystemPressure", pressurePulse);
                 
                 var ddoGroup = $"Pressure:DDO:{gt.Target.DdoCode}";
-                await svc.PushPulseAsync(ddoGroup, "SystemPressure", MapSurgicalPulse("Approver", ev, m.Approver, load));
-                await svc.PushPulseAsync(ddoGroup, "SystemPressure", MapSurgicalPulse(gt.Target.UserId, ev, m.Operator, load));
+                await svc.PushPulseAsync(ddoGroup, "SystemPressure", MapSurgicalPulse("Approver", ev, m.Approver, currentLoad));
+                await svc.PushPulseAsync(ddoGroup, "SystemPressure", MapSurgicalPulse(gt.Target.UserId, ev, m.Operator, currentLoad));
             }
         }
 
@@ -237,16 +238,16 @@ public class DashboardAggregationWorker : BackgroundService
             
             try
             {
-                var (cpu, ram, db) = await monitor.GetMetricsAsync();
-                int load = (cpu + (db * 5)) / 2;
+                var (hCpu, hRam, hDb) = await monitor.GetMetricsAsync();
+                int load = (hCpu + (hDb * 5)) / 2;
 
                 var pulse = new PressurePulseMetrics 
                 { 
                     sc = "Admin", 
                     sl = load, 
-                    c = cpu, 
-                    m = ram, 
-                    d = db 
+                    c = hCpu, 
+                    m = hRam, 
+                    d = hDb 
                 };
 
                 await svc.PushPulseAsync("Pressure:Admin", "SystemPressure", pulse);

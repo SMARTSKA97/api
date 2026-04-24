@@ -11,13 +11,16 @@ namespace Dashboard.PL.Controllers;
 public class DashboardController : ControllerBase
 {
     private readonly IDashboardService _dashService;
+    private readonly IDashboardUpdateService _dashUpdateService;
     private readonly ILogger<DashboardController> _logger;
 
     public DashboardController(
         IDashboardService dashService, 
+        IDashboardUpdateService dashUpdateService,
         ILogger<DashboardController> logger)
     {
         _dashService = dashService;
+        _dashUpdateService = dashUpdateService;
         _logger = logger;
     }
 
@@ -73,6 +76,21 @@ public class DashboardController : ControllerBase
         {
             _logger.LogError(ex, "Manual refresh failed for user {User}", userId);
             return StatusCode(500, new { message = "Internal server error during refresh." });
+        }
+    }
+
+    [HttpGet("metrics-gap")]
+    public async Task<IActionResult> GetMetricsGap([FromQuery] string groupName, [FromQuery] long lastId, [FromQuery] long currentId)
+    {
+        try 
+        {
+            var gap = await _dashUpdateService.GetMetricsGapAsync(groupName, lastId, currentId);
+            return Ok(gap);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve metrics gap for group {Group}", groupName);
+            return StatusCode(500, new { message = "Failed to recover missed data." });
         }
     }
 }

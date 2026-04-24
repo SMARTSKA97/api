@@ -22,7 +22,7 @@ builder.Services.AddScoped<Dashboard.BLL.Services.IWorkflowService, Dashboard.BL
 builder.Services.AddScoped<Dashboard.BLL.Services.ISimulationService, Dashboard.BLL.Services.SimulationService>();
 builder.Services.AddScoped<Dashboard.BLL.Services.IFiscalYearUtility, Dashboard.BLL.Services.FiscalYearUtility>();
 builder.Services.AddScoped<Dashboard.BLL.Services.IDashboardService, Dashboard.BLL.Services.DashboardService>();
-builder.Services.AddScoped<Dashboard.BLL.Services.IDashboardUpdateService, Dashboard.PL.Services.DashboardUpdateService>();
+builder.Services.AddSingleton<Dashboard.BLL.Services.IDashboardUpdateService, Dashboard.PL.Services.DashboardUpdateService>();
 builder.Services.AddScoped<Dashboard.BLL.Utilities.IResourceMonitor, Dashboard.BLL.Utilities.ResourceMonitor>();
 
 builder.Services.AddHostedService<Dashboard.PL.Workers.DashboardAggregationWorker>();
