@@ -116,39 +116,44 @@ public class DashboardAggregationWorker : BackgroundService
 
         var today = DateTime.UtcNow.Date;
 
-        // Group by unique (FY, DDO, User) to fetch only once per cycle
-        var targets = payloads.Select(p => p.Split(':'))
+        // Group by unique (FY, DDO, User) to fetch in batch
+        var groupedTargets = payloads.Select(p => p.Split(':'))
             .Where(p => p.Length >= 6)
-            .GroupBy(p => new { FY = int.Parse(p[0]), DDO = p[2], User = p[4] })
+            .GroupBy(p => new DashboardTarget(int.Parse(p[0]), p[2], p[4]))
+            .Select(g => new { Target = g.Key, EventType = g.Last()[^1] })
             .ToList();
 
-        foreach (var target in targets)
+        if (!groupedTargets.Any() && !_isRevivalPending) return;
+
+        // BATCH SURGICAL SNAPSHOT: Optimized single-trip lookup
+        var batchMetrics = await repo.GetBatchSurgicalSnapshotsAsync(groupedTargets.Select(x => x.Target), today);
+        var metricsMap = batchMetrics.ToDictionary(m => m.Target);
+
+        foreach (var gt in groupedTargets)
         {
-            // SURGICAL PK SNAPSHOT: Ultra-fast row lookup for Today
-            var (adminM, appM, opM) = await repo.GetSurgicalSnapshotAsync(target.Key.FY, target.Key.DDO, target.Key.User, today);
+            if (!metricsMap.TryGetValue(gt.Target, out var m)) continue;
 
             // GHOSTING STAGGER: Small jitter to prevent SignalR storm
             await Task.Delay(new Random().Next(0, _jitterMs), ct);
 
-            // Broadcast to Surgical Groups (Simplified Flattened Target)
-            var ev = target.Last()[^1]; 
+            // Broadcast to Surgical Groups
+            var ev = gt.EventType; 
             
-            await svc.PushPulseAsync("Dashboard:Admin", "DashboardUpdate", MapSurgicalPulse("Admin", ev, adminM));
-            await svc.PushPulseAsync($"Dashboard:DDO:{target.Key.DDO}", "DashboardUpdate", MapSurgicalPulse("Approver", ev, appM));
-            await svc.PushPulseAsync($"Dashboard:DDO:{target.Key.DDO}:OP:{target.Key.User}", "DashboardUpdate", MapSurgicalPulse("Operator", ev, opM));
+            await svc.PushPulseAsync("Dashboard:Admin", "DashboardUpdate", MapSurgicalPulse("Admin", ev, m.Admin));
+            await svc.PushPulseAsync($"Dashboard:DDO:{gt.Target.DdoCode}", "DashboardUpdate", MapSurgicalPulse("Approver", ev, m.Approver));
+            await svc.PushPulseAsync($"Dashboard:DDO:{gt.Target.DdoCode}:OP:{gt.Target.UserId}", "DashboardUpdate", MapSurgicalPulse("Operator", ev, m.Operator));
 
             // Target: SystemPressure (Exclusive to Admin and Approver DDO)
             if (ev == "BILL_GEN" || ev == "FTO_RCVD" || ev == "BILL_FWD_APP" || ev == "BILL_FWD_TRZ")
             {
-                int load = (cpu + (db * 5)) / 2; // Synthetic load indicator
-                var pressurePulse = MapSurgicalPulse("Admin", ev, adminM, load, cpu, ram, db);
+                int load = (cpu + (db * 5)) / 2;
+                var pressurePulse = MapSurgicalPulse("Admin", ev, m.Admin, load, cpu, ram, db);
                 
                 await svc.PushPulseAsync("Pressure:Admin", "SystemPressure", pressurePulse);
                 
-                // Office-wide visibility for DDO staff (Approver and Operators)
-                var ddoGroup = $"Pressure:DDO:{target.Key.DDO}";
-                await svc.PushPulseAsync(ddoGroup, "SystemPressure", MapSurgicalPulse("Approver", ev, appM, load));
-                await svc.PushPulseAsync(ddoGroup, "SystemPressure", MapSurgicalPulse(target.Key.User, ev, opM, load));
+                var ddoGroup = $"Pressure:DDO:{gt.Target.DdoCode}";
+                await svc.PushPulseAsync(ddoGroup, "SystemPressure", MapSurgicalPulse("Approver", ev, m.Approver, load));
+                await svc.PushPulseAsync(ddoGroup, "SystemPressure", MapSurgicalPulse(gt.Target.UserId, ev, m.Operator, load));
             }
         }
 

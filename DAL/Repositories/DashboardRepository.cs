@@ -12,7 +12,17 @@ public interface IDashboardRepository
     Task<string> GetDashboardStatusAsync();
     Task<IEnumerable<DashboardMetrics>> GetComparisonMetricsAsync(int fy, string ddoCode, string userId, DateTime start, DateTime end);
     Task RefreshBaselineAsync(string userId, bool isAuto);
+    Task<IEnumerable<BatchDashboardMetrics>> GetBatchSurgicalSnapshotsAsync(IEnumerable<DashboardTarget> targets, DateTime date);
 }
+
+public record DashboardTarget(int FY, string DdoCode, string UserId);
+
+public record BatchDashboardMetrics(
+    DashboardTarget Target,
+    DashboardMetrics Admin,
+    DashboardMetrics Approver,
+    DashboardMetrics Operator
+);
 
 public class DashboardRepository : IDashboardRepository
 {
@@ -116,6 +126,42 @@ public class DashboardRepository : IDashboardRepository
             app != null ? Map(app) : new DashboardMetrics(),
             op != null ? Map(op) : new DashboardMetrics()
         );
+    }
+
+    public async Task<IEnumerable<BatchDashboardMetrics>> GetBatchSurgicalSnapshotsAsync(IEnumerable<DashboardTarget> targets, DateTime date)
+    {
+        var distinctFys = targets.Select(t => t.FY).Distinct().ToList();
+        var distinctDdos = targets.Select(t => t.DdoCode).Distinct().ToList();
+        var distinctUsers = targets.Select(t => t.UserId).Distinct().ToList();
+
+        var admins = await _db.Set<DailyLedgerAdmin>().AsNoTracking()
+            .Where(x => x.LedgerDate == date.Date && distinctFys.Contains(x.FinancialYear))
+            .ToListAsync();
+
+        var approvers = await _db.Set<DailyLedgerApprover>().AsNoTracking()
+            .Where(x => x.LedgerDate == date.Date && distinctDdos.Contains(x.DdoCode) && distinctFys.Contains(x.FinancialYear))
+            .ToListAsync();
+
+        var operators = await _db.Set<DailyLedgerOperator>().AsNoTracking()
+            .Where(x => x.LedgerDate == date.Date && distinctUsers.Contains(x.UserId) && distinctDdos.Contains(x.DdoCode) && distinctFys.Contains(x.FinancialYear))
+            .ToListAsync();
+
+        var result = new List<BatchDashboardMetrics>();
+        foreach (var target in targets)
+        {
+            var admin = admins.FirstOrDefault(x => x.FinancialYear == target.FY);
+            var app = approvers.FirstOrDefault(x => x.FinancialYear == target.FY && x.DdoCode == target.DdoCode);
+            var op = operators.FirstOrDefault(x => x.FinancialYear == target.FY && x.DdoCode == target.DdoCode && x.UserId == target.UserId);
+
+            result.Add(new BatchDashboardMetrics(
+                target,
+                admin != null ? Map(admin) : new DashboardMetrics(),
+                app != null ? Map(app) : new DashboardMetrics(),
+                op != null ? Map(op) : new DashboardMetrics()
+            ));
+        }
+
+        return result;
     }
 
     private DashboardMetrics Map(DailyLedgerBase s) => new() {
