@@ -33,4 +33,13 @@ public class PressurePulseMetrics : BasePulseMetrics
     public string sc { get; set; } = ""; // scope
 
     public int sl { get; set; } // systemLoad
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? c { get; set; } // cpu
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? m { get; set; } // mem
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? d { get; set; } // db
 }

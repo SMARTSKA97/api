@@ -86,9 +86,86 @@ public class SimulationService : ISimulationService
 
     public async Task RunCycleAsync()
     {
-        await SeedRandomFtosAsync(_random.Next(3, 8));
-        if (_random.NextDouble() > 0.3) await AutoGenerateBillsAsync();
-        if (_random.NextDouble() > 0.4) await AutoForwardBillsAsync();
-        if (_random.NextDouble() > 0.5) await AutoFinalizeBillsAsync();
+        // 1. FTO Creation (Operators + Approver)
+        var operators = await _context.Users.Where(u => u.Role == "Operator").ToListAsync();
+        var approvers = await _context.Users.Where(u => u.Role == "Approver").ToListAsync();
+        
+        // Random Operators create FTOs
+        foreach (var op in operators)
+        {
+            if (_random.NextDouble() > 0.3) await SeedRandomFtosAsync(_random.Next(5, 15));
+        }
+        
+        // Approver also creates FTOs
+        foreach (var app in approvers)
+        {
+            if (_random.NextDouble() > 0.5) await SeedRandomFtosAsync(_random.Next(2, 6));
+        }
+
+        // 2. Operator Processes FTOs to Bills and Forwards
+        foreach (var op in operators)
+        {
+            // Create Bills (Status 1)
+            var pendingFtos = await _context.Ftos
+                .Where(f => f.UserId == op.UserId && f.FtoStatus == 0)
+                .Select(f => f.FtoNo)
+                .ToListAsync();
+            
+            if (pendingFtos.Any())
+            {
+                var subset = pendingFtos.Take(_random.Next(1, pendingFtos.Count)).ToArray();
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"CALL bills.sp_generate_bill({subset}, {op.UserId}, {op.DdoCode}, {"Operator"}, {_fyUtility.CalculateCurrentFY()})");
+            }
+
+            // Forward Bills to Approver (Status 1 -> 2)
+            var billsToForward = await _context.Bills
+                .Where(b => b.UserId == op.UserId && b.BillStatus == 1)
+                .Select(b => b.BillNo)
+                .ToListAsync();
+            
+            foreach (var billNo in billsToForward)
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"CALL bills.sp_forward_bill({billNo}, {op.UserId}, {"Operator"})");
+            }
+        }
+
+        // 3. Approver Processes own FTOs and handles Operator Bills
+        foreach (var app in approvers)
+        {
+            // Process own FTOs (Status 0)
+            var appFtos = await _context.Ftos
+                .Where(f => f.UserId == app.UserId && f.FtoStatus == 0)
+                .Select(f => f.FtoNo)
+                .ToListAsync();
+            
+            if (appFtos.Any())
+            {
+                var subset = appFtos.Take(_random.Next(1, appFtos.Count)).ToArray();
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"CALL bills.sp_generate_bill({subset}, {app.UserId}, {app.DdoCode}, {"Approver"}, {_fyUtility.CalculateCurrentFY()})");
+            }
+
+            // Handle Bills (Reject or Forward to Treasury)
+            var incomingBills = await _context.Bills
+                .Where(b => b.DdoCode == app.DdoCode && (b.BillStatus == 2 || b.BillStatus == 0))
+                .Select(b => b.BillNo)
+                .ToListAsync();
+            
+            foreach (var billNo in incomingBills)
+            {
+                if (_random.NextDouble() > 0.15) // 85% Forward
+                {
+                    await _context.Database.ExecuteSqlInterpolatedAsync(
+                        $"CALL bills.sp_forward_bill({billNo}, {app.UserId}, {"Approver"})");
+                }
+                else // 15% Reject
+                {
+                    await _context.Database.ExecuteSqlInterpolatedAsync(
+                        $"CALL bills.sp_reject_bill({billNo}, {app.UserId})");
+                }
+            }
+        }
     }
 }

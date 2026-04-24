@@ -16,6 +16,7 @@ public class DashboardAggregationWorker : BackgroundService
     private readonly string _connectionString;
     private readonly int _debounceMs;
     private readonly int _jitterMs;
+    private int _adaptiveDebounceMs;
 
     // Pulse Coalescing Buffer: Stores unique targets to fetch in the next flush cycle
     // Key format: "SCOPE:FY:DDO:USER:TYPE"
@@ -32,6 +33,7 @@ public class DashboardAggregationWorker : BackgroundService
         _connectionString = configuration.GetConnectionString("DefaultConnection") ?? "";
         _debounceMs = configuration.GetValue<int>("SignalRSettings:PulseDebounceMs", 500);
         _jitterMs = configuration.GetValue<int>("SignalRSettings:JitterMaxMs", 30);
+        _adaptiveDebounceMs = _debounceMs;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -41,8 +43,9 @@ public class DashboardAggregationWorker : BackgroundService
         var maintenanceTask = PeriodicMaintenanceAsync(stoppingToken);
         var listenTask = ListenForUpdates(stoppingToken);
         var flushTask = FlushBufferLoopAsync(stoppingToken);
+        var heartbeatTask = HeartbeatLoopAsync(stoppingToken);
 
-        await Task.WhenAll(maintenanceTask, listenTask, flushTask);
+        await Task.WhenAll(maintenanceTask, listenTask, flushTask, heartbeatTask);
     }
 
     private async Task ListenForUpdates(CancellationToken stoppingToken)
@@ -81,7 +84,7 @@ public class DashboardAggregationWorker : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            await Task.Delay(_debounceMs, stoppingToken);
+            await Task.Delay(_adaptiveDebounceMs, stoppingToken);
 
             if (_pulseBuffer.IsEmpty && !_isRevivalPending) continue;
 
@@ -105,6 +108,12 @@ public class DashboardAggregationWorker : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var repo = scope.ServiceProvider.GetRequiredService<IDashboardRepository>();
         var svc = scope.ServiceProvider.GetRequiredService<IDashboardUpdateService>();
+        var monitor = scope.ServiceProvider.GetRequiredService<Dashboard.BLL.Utilities.IResourceMonitor>();
+        var (cpu, ram, db) = await monitor.GetMetricsAsync();
+        
+        // ADAPTIVE DEBOUNCE: Protect hub from storm during high CPU
+        _adaptiveDebounceMs = cpu > 80 ? _debounceMs * 3 : (cpu > 50 ? _debounceMs * 2 : _debounceMs);
+
         var today = DateTime.UtcNow.Date;
 
         // Group by unique (FY, DDO, User) to fetch only once per cycle
@@ -128,22 +137,29 @@ public class DashboardAggregationWorker : BackgroundService
             await svc.PushPulseAsync($"Dashboard:DDO:{target.Key.DDO}", "DashboardUpdate", MapSurgicalPulse("Approver", ev, appM));
             await svc.PushPulseAsync($"Dashboard:DDO:{target.Key.DDO}:OP:{target.Key.User}", "DashboardUpdate", MapSurgicalPulse("Operator", ev, opM));
 
-            // Target: SystemPressure (Exclusive to Admin)
-            if (ev == "BILL_GEN" || ev == "FTO_RCVD")
+            // Target: SystemPressure (Exclusive to Admin and Approver DDO)
+            if (ev == "BILL_GEN" || ev == "FTO_RCVD" || ev == "BILL_FWD_APP" || ev == "BILL_FWD_TRZ")
             {
-                int load = new Random().Next(10, 180);
-                await svc.PushPulseAsync("Pressure:Admin", "SystemPressure", MapSurgicalPulse("Admin", ev, adminM, load));
+                int load = (cpu + (db * 5)) / 2; // Synthetic load indicator
+                var pressurePulse = MapSurgicalPulse("Admin", ev, adminM, load, cpu, ram, db);
+                
+                await svc.PushPulseAsync("Pressure:Admin", "SystemPressure", pressurePulse);
+                
+                // Office-wide visibility for DDO staff (Approver and Operators)
+                var ddoGroup = $"Pressure:DDO:{target.Key.DDO}";
+                await svc.PushPulseAsync(ddoGroup, "SystemPressure", MapSurgicalPulse("Approver", ev, appM, load));
+                await svc.PushPulseAsync(ddoGroup, "SystemPressure", MapSurgicalPulse(target.Key.User, ev, opM, load));
             }
         }
 
         _isRevivalPending = false;
     }
 
-    private object MapSurgicalPulse(string scope, string ev, DashboardMetrics m, int? load = null)
+    private object MapSurgicalPulse(string scope, string ev, DashboardMetrics m, int? load = null, int? cpu = null, int? ram = null, int? db = null)
     {
         if (load.HasValue)
         {
-            var p = new PressurePulseMetrics { sl = load.Value, sc = scope };
+            var p = new PressurePulseMetrics { sl = load.Value, sc = scope, c = cpu, m = ram, d = db };
             switch (ev)
             {
                 case "FTO_RCVD": p.rf = m.ReceivedFto; break;
@@ -203,5 +219,41 @@ public class DashboardAggregationWorker : BackgroundService
             }
         }
         catch (Exception ex) { _logger.LogError(ex, "Infrastructure Check Failed!"); }
+    }
+    private async Task HeartbeatLoopAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            await Task.Delay(3000, stoppingToken);
+
+            using var scope = _serviceProvider.CreateScope();
+            var monitor = scope.ServiceProvider.GetRequiredService<Dashboard.BLL.Utilities.IResourceMonitor>();
+            var svc = scope.ServiceProvider.GetRequiredService<IDashboardUpdateService>();
+            
+            try
+            {
+                var (cpu, ram, db) = await monitor.GetMetricsAsync();
+                int load = (cpu + (db * 5)) / 2;
+
+                var pulse = new PressurePulseMetrics 
+                { 
+                    sc = "Admin", 
+                    sl = load, 
+                    c = cpu, 
+                    m = ram, 
+                    d = db 
+                };
+
+                await svc.PushPulseAsync("Pressure:Admin", "SystemPressure", pulse);
+                
+                // Broadcast resources to DDO offices (POC: DDO001)
+                pulse.sc = "Approver";
+                await svc.PushPulseAsync("Pressure:DDO:DDO001", "SystemPressure", pulse);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Heartbeat Failed: {Msg}", ex.Message);
+            }
+        }
     }
 }
