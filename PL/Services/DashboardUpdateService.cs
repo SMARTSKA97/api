@@ -34,7 +34,8 @@ public class DashboardUpdateService : IDashboardUpdateService
             GroupName = groupName,
             sid = sid,
             m = methodName,
-            d = data
+            d = data,
+            ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         };
 
         // 3. Store in History (Non-blocking)
@@ -67,7 +68,8 @@ public class DashboardUpdateService : IDashboardUpdateService
                 GroupName = m.GroupName,
                 sid = m.SequenceId,
                 m = m.Method,
-                d = m.Data
+                d = m.Data,
+                ts = ((DateTimeOffset)m.Timestamp).ToUnixTimeMilliseconds()
             })
             .Cast<object>();
 

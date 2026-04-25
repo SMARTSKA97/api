@@ -24,6 +24,7 @@ builder.Services.AddScoped<Dashboard.BLL.Services.IFiscalYearUtility, Dashboard.
 builder.Services.AddScoped<Dashboard.BLL.Services.IDashboardService, Dashboard.BLL.Services.DashboardService>();
 builder.Services.AddSingleton<Dashboard.BLL.Services.IDashboardUpdateService, Dashboard.PL.Services.DashboardUpdateService>();
 builder.Services.AddScoped<Dashboard.BLL.Utilities.IResourceMonitor, Dashboard.BLL.Utilities.ResourceMonitor>();
+builder.Services.AddSingleton<Dashboard.BLL.Services.ILoadTestService, Dashboard.BLL.Services.LoadTestService>();
 
 builder.Services.AddHostedService<Dashboard.PL.Workers.DashboardAggregationWorker>();
 
