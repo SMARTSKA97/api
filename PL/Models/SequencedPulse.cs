@@ -21,6 +21,10 @@ public class SequencedPulse
     [Key("d")]
     [JsonPropertyName("d")]
     public object d { get; set; } = new { };
+
+    [Key("ts")]
+    [JsonPropertyName("ts")]
+    public long ts { get; set; } = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 }
 
 public class SequencedMessage

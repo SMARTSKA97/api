@@ -149,7 +149,10 @@ public class DashboardRepository : IDashboardRepository
                     GeneratedBills = g.Sum(x => x.GeneratedBills),
                     ForwardedToTreasury = g.Sum(x => x.ForwardedToTreasury),
                     ReceivedByApprover = g.Sum(x => x.ReceivedByApprover),
-                    RejectedByApprover = g.Sum(x => x.RejectedByApprover)
+                    RejectedByApprover = g.Sum(x => x.RejectedByApprover),
+                    BillAmount = g.Sum(x => x.BillAmount),
+                    ForwardedAmount = g.Sum(x => x.ForwardedAmount),
+                    FtoAmount = g.Sum(x => x.FtoAmount)
                 }).FirstOrDefaultAsync() ?? new DashboardMetrics();
 
             // If today is in range, isolate today's values
@@ -194,7 +197,10 @@ public class DashboardRepository : IDashboardRepository
                     GeneratedBills = g.Sum(x => x.GeneratedBills),
                     ForwardedToTreasury = g.Sum(x => x.ForwardedToTreasury),
                     ReceivedByApprover = g.Sum(x => x.ReceivedByApprover),
-                    RejectedByApprover = g.Sum(x => x.RejectedByApprover)
+                    RejectedByApprover = g.Sum(x => x.RejectedByApprover),
+                    BillAmount = g.Sum(x => x.BillAmount),
+                    ForwardedAmount = g.Sum(x => x.ForwardedAmount),
+                    FtoAmount = g.Sum(x => x.FtoAmount)
                 }).FirstOrDefaultAsync() ?? new DashboardMetrics();
 
             if (today >= start.Date && today <= end.Date)
@@ -238,7 +244,10 @@ public class DashboardRepository : IDashboardRepository
                     GeneratedBills = g.Sum(x => x.GeneratedBills),
                     ForwardedToTreasury = g.Sum(x => x.ForwardedToTreasury),
                     ReceivedByApprover = g.Sum(x => x.ReceivedByApprover),
-                    RejectedByApprover = g.Sum(x => x.RejectedByApprover)
+                    RejectedByApprover = g.Sum(x => x.RejectedByApprover),
+                    BillAmount = g.Sum(x => x.BillAmount),
+                    ForwardedAmount = g.Sum(x => x.ForwardedAmount),
+                    FtoAmount = g.Sum(x => x.FtoAmount)
                 }).FirstOrDefaultAsync() ?? new DashboardMetrics();
 
             if (today >= start.Date && today <= end.Date)

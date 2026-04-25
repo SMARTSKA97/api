@@ -96,6 +96,7 @@ public class DashboardAggregationWorker : BackgroundService
             {
                 await ProcessCalescedPayloads(payloads, stoppingToken);
             }
+            catch (OperationCanceledException) { } // Shutdown
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Pulse Flush Failed!");
@@ -161,34 +162,38 @@ public class DashboardAggregationWorker : BackgroundService
         _isRevivalPending = false;
     }
 
-    private object MapSurgicalPulse(string scope, string ev, DashboardMetrics m, int? load = null, int? cpu = null, int? ram = null, int? db = null)
+    private Dictionary<string, object> MapSurgicalPulse(string scope, string ev, DashboardMetrics m, int? load = null, int? cpu = null, int? ram = null, int? db = null)
     {
-        if (load.HasValue)
+        var p = new Dictionary<string, object> { ["sc"] = scope };
+        
+        if (load.HasValue) p["sl"] = load.Value;
+        if (cpu.HasValue) p["c"] = cpu.Value;
+        if (ram.HasValue) p["m"] = ram.Value;
+        if (db.HasValue) p["d"] = db.Value;
+
+        switch (ev)
         {
-            var p = new PressurePulseMetrics { sl = load.Value, sc = scope, c = cpu, m = ram, d = db };
-            switch (ev)
-            {
-                case "FTO_RCVD": p.rf = m.ReceivedFto; break;
-                case "BILL_GEN": p.pf = m.ProcessedFto; p.gb = m.GeneratedBills; break;
-                case "BILL_FWD_APP": p.ar = m.ReceivedByApprover; break;
-                case "BILL_REJ": p.rb = m.RejectedByApprover; break;
-                case "BILL_FWD_TRZ": p.ft = m.ForwardedToTreasury; break;
-            }
-            return p;
+            case "FTO_RCVD": 
+                p["rf"] = m.ReceivedFto; 
+                p["fta"] = (double)m.FtoAmount;
+                break;
+            case "BILL_GEN": 
+                p["pf"] = m.ProcessedFto; 
+                p["gb"] = m.GeneratedBills; 
+                p["ba"] = (double)m.BillAmount;
+                break;
+            case "BILL_FWD_APP": 
+                p["ar"] = m.ReceivedByApprover; 
+                break;
+            case "BILL_REJ": 
+                p["rb"] = m.RejectedByApprover; 
+                break;
+            case "BILL_FWD_TRZ": 
+                p["ft"] = m.ForwardedToTreasury; 
+                p["fa"] = (double)m.ForwardedAmount;
+                break;
         }
-        else
-        {
-            var p = new BasePulseMetrics();
-            switch (ev)
-            {
-                case "FTO_RCVD": p.rf = m.ReceivedFto; break;
-                case "BILL_GEN": p.pf = m.ProcessedFto; p.gb = m.GeneratedBills; break;
-                case "BILL_FWD_APP": p.ar = m.ReceivedByApprover; break;
-                case "BILL_REJ": p.rb = m.RejectedByApprover; break;
-                case "BILL_FWD_TRZ": p.ft = m.ForwardedToTreasury; break;
-            }
-            return p;
-        }
+        return p;
     }
 
     private async Task PeriodicMaintenanceAsync(CancellationToken stoppingToken)
@@ -224,6 +229,7 @@ public class DashboardAggregationWorker : BackgroundService
                 await db.Database.ExecuteSqlInterpolatedAsync($"SELECT dashboard.fn_create_ledger_partitions({nextFy})");
             }
         }
+        catch (OperationCanceledException) { } // Shutdown
         catch (Exception ex) { _logger.LogError(ex, "Infrastructure Check Failed!"); }
     }
     private async Task HeartbeatLoopAsync(CancellationToken stoppingToken)
@@ -256,6 +262,7 @@ public class DashboardAggregationWorker : BackgroundService
                 pulse.sc = "Approver";
                 await svc.PushPulseAsync("Pressure:DDO:DDO001", "SystemPressure", pulse);
             }
+            catch (OperationCanceledException) { } // Shutdown
             catch (Exception ex)
             {
                 _logger.LogWarning("Heartbeat Failed: {Msg}", ex.Message);
