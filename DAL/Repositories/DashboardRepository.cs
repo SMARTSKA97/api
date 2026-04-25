@@ -81,7 +81,10 @@ public class DashboardRepository : IDashboardRepository
                 GeneratedBills = g.Sum(x => x.GeneratedBills),
                 ForwardedToTreasury = g.Sum(x => x.ForwardedToTreasury),
                 ReceivedByApprover = g.Sum(x => x.ReceivedByApprover),
-                RejectedByApprover = g.Sum(x => x.RejectedByApprover)
+                RejectedByApprover = g.Sum(x => x.RejectedByApprover),
+                BillAmount = g.Sum(x => x.BillAmount),
+                ForwardedAmount = g.Sum(x => x.ForwardedAmount),
+                FtoAmount = g.Sum(x => x.FtoAmount)
             }).FirstOrDefaultAsync() ?? new DashboardMetrics();
     }
 
@@ -96,7 +99,10 @@ public class DashboardRepository : IDashboardRepository
                 GeneratedBills = g.Sum(x => x.GeneratedBills),
                 ForwardedToTreasury = g.Sum(x => x.ForwardedToTreasury),
                 ReceivedByApprover = g.Sum(x => x.ReceivedByApprover),
-                RejectedByApprover = g.Sum(x => x.RejectedByApprover)
+                RejectedByApprover = g.Sum(x => x.RejectedByApprover),
+                BillAmount = g.Sum(x => x.BillAmount),
+                ForwardedAmount = g.Sum(x => x.ForwardedAmount),
+                FtoAmount = g.Sum(x => x.FtoAmount)
             }).FirstOrDefaultAsync() ?? new DashboardMetrics();
     }
 
@@ -111,7 +117,10 @@ public class DashboardRepository : IDashboardRepository
                 GeneratedBills = g.Sum(x => x.GeneratedBills),
                 ForwardedToTreasury = g.Sum(x => x.ForwardedToTreasury),
                 ReceivedByApprover = g.Sum(x => x.ReceivedByApprover),
-                RejectedByApprover = g.Sum(x => x.RejectedByApprover)
+                RejectedByApprover = g.Sum(x => x.RejectedByApprover),
+                BillAmount = g.Sum(x => x.BillAmount),
+                ForwardedAmount = g.Sum(x => x.ForwardedAmount),
+                FtoAmount = g.Sum(x => x.FtoAmount)
             }).FirstOrDefaultAsync() ?? new DashboardMetrics();
     }
 
@@ -156,6 +165,9 @@ public class DashboardRepository : IDashboardRepository
                     admin.TodayForwardedToTreasury = live.ForwardedToTreasury;
                     admin.TodayReceivedByApprover = live.ReceivedByApprover;
                     admin.TodayRejectedByApprover = live.RejectedByApprover;
+                    admin.TodayBillAmount = live.BillAmount;
+                    admin.TodayForwardedAmount = live.ForwardedAmount;
+                    admin.TodayFtoAmount = live.FtoAmount;
                 }
             }
         }
@@ -197,6 +209,9 @@ public class DashboardRepository : IDashboardRepository
                     app.TodayForwardedToTreasury = live.ForwardedToTreasury;
                     app.TodayReceivedByApprover = live.ReceivedByApprover;
                     app.TodayRejectedByApprover = live.RejectedByApprover;
+                    app.TodayBillAmount = live.BillAmount;
+                    app.TodayForwardedAmount = live.ForwardedAmount;
+                    app.TodayFtoAmount = live.FtoAmount;
                 }
             }
         }
@@ -238,6 +253,9 @@ public class DashboardRepository : IDashboardRepository
                     op.TodayForwardedToTreasury = live.ForwardedToTreasury;
                     op.TodayReceivedByApprover = live.ReceivedByApprover;
                     op.TodayRejectedByApprover = live.RejectedByApprover;
+                    op.TodayBillAmount = live.BillAmount;
+                    op.TodayForwardedAmount = live.ForwardedAmount;
+                    op.TodayFtoAmount = live.FtoAmount;
                 }
             }
         }
@@ -254,6 +272,9 @@ public class DashboardRepository : IDashboardRepository
         m.ForwardedToTreasury += live.ForwardedToTreasury;
         m.ReceivedByApprover += live.ReceivedByApprover;
         m.RejectedByApprover += live.RejectedByApprover;
+        m.BillAmount += live.BillAmount;
+        m.ForwardedAmount += live.ForwardedAmount;
+        m.FtoAmount += live.FtoAmount;
 
         // Capture the "Today" portion separately
         m.TodayReceivedFto = live.ReceivedFto;
@@ -262,6 +283,9 @@ public class DashboardRepository : IDashboardRepository
         m.TodayForwardedToTreasury = live.ForwardedToTreasury;
         m.TodayReceivedByApprover = live.ReceivedByApprover;
         m.TodayRejectedByApprover = live.RejectedByApprover;
+        m.TodayBillAmount = live.BillAmount;
+        m.TodayForwardedAmount = live.ForwardedAmount;
+        m.TodayFtoAmount = live.FtoAmount;
     }
 
     public async Task<(DashboardMetrics Admin, DashboardMetrics App, DashboardMetrics Op)> GetSurgicalSnapshotAsync(int fy, string ddoCode, string userId, DateTime date)
@@ -317,24 +341,28 @@ public class DashboardRepository : IDashboardRepository
     private DashboardMetrics Map(DailyLedgerBase s) => new() {
         ReceivedFto = s.ReceivedFto, ProcessedFto = s.ProcessedFto, GeneratedBills = s.GeneratedBills,
         ForwardedToTreasury = s.ForwardedToTreasury, ReceivedByApprover = s.ReceivedByApprover, RejectedByApprover = s.RejectedByApprover,
+        BillAmount = s.BillAmount, ForwardedAmount = s.ForwardedAmount, FtoAmount = s.FtoAmount,
         Context = s is DailyLedgerAdmin ? "Admin" : s is DailyLedgerApprover ? "Approver" : "Operator"
     };
 
     private DashboardMetrics Map(FySummaryAdmin s) => new() {
         ReceivedFto = s.ReceivedFto, ProcessedFto = s.ProcessedFto, GeneratedBills = s.GeneratedBills,
         ForwardedToTreasury = s.ForwardedToTreasury, ReceivedByApprover = s.ReceivedByApprover, RejectedByApprover = s.RejectedByApprover,
+        BillAmount = s.BillAmount, ForwardedAmount = s.ForwardedAmount, FtoAmount = s.FtoAmount,
         Context = "Admin"
     };
 
     private DashboardMetrics Map(FySummaryApprover s) => new() {
         ReceivedFto = s.ReceivedFto, ProcessedFto = s.ProcessedFto, GeneratedBills = s.GeneratedBills,
         ForwardedToTreasury = s.ForwardedToTreasury, ReceivedByApprover = s.ReceivedByApprover, RejectedByApprover = s.RejectedByApprover,
+        BillAmount = s.BillAmount, ForwardedAmount = s.ForwardedAmount, FtoAmount = s.FtoAmount,
         Context = "Approver"
     };
 
     private DashboardMetrics Map(FySummaryOperator s) => new() {
         ReceivedFto = s.ReceivedFto, ProcessedFto = s.ProcessedFto, GeneratedBills = s.GeneratedBills,
         ForwardedToTreasury = s.ForwardedToTreasury, ReceivedByApprover = s.ReceivedByApprover, RejectedByApprover = s.RejectedByApprover,
+        BillAmount = s.BillAmount, ForwardedAmount = s.ForwardedAmount, FtoAmount = s.FtoAmount,
         Context = "Operator"
     };
 }
@@ -347,6 +375,9 @@ public class DashboardMetrics
     public int ForwardedToTreasury { get; set; }
     public int ReceivedByApprover { get; set; }
     public int RejectedByApprover { get; set; }
+    public decimal BillAmount { get; set; }
+    public decimal ForwardedAmount { get; set; }
+    public decimal FtoAmount { get; set; }
     public string Context { get; set; } = "";
     
     // Today's contribution (used for real-time additive merge in frontend)
@@ -356,4 +387,7 @@ public class DashboardMetrics
     public int TodayForwardedToTreasury { get; set; }
     public int TodayReceivedByApprover { get; set; }
     public int TodayRejectedByApprover { get; set; }
+    public decimal TodayBillAmount { get; set; }
+    public decimal TodayForwardedAmount { get; set; }
+    public decimal TodayFtoAmount { get; set; }
 }

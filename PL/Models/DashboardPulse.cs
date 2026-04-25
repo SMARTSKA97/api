@@ -28,6 +28,15 @@ public class BasePulseMetrics
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? rb { get; set; } // rejBill
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public decimal? ba { get; set; } // billAmount
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public decimal? fa { get; set; } // fwdAmount
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public decimal? fta { get; set; } // ftoAmount
 }
 
 [MessagePackObject(keyAsPropertyName: true)]

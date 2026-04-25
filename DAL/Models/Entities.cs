@@ -139,6 +139,15 @@ public abstract class DailyLedgerBase
 
     [Column("rejected_by_approver")]
     public int RejectedByApprover { get; set; }
+
+    [Column("bill_amount")]
+    public decimal BillAmount { get; set; }
+
+    [Column("forwarded_amount")]
+    public decimal ForwardedAmount { get; set; }
+
+    [Column("fto_amount")]
+    public decimal FtoAmount { get; set; }
 }
 
 [Table("daily_ledger_admin", Schema = "dashboard")]

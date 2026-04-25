@@ -30,6 +30,15 @@ public class FySummaryAdmin
     
     [Column("rejected_by_approver")]
     public int RejectedByApprover { get; set; }
+
+    [Column("bill_amount")]
+    public decimal BillAmount { get; set; }
+
+    [Column("forwarded_amount")]
+    public decimal ForwardedAmount { get; set; }
+
+    [Column("fto_amount")]
+    public decimal FtoAmount { get; set; }
 }
 
 [Table("fy_summary_approver", Schema = "dashboard")]
@@ -58,6 +67,15 @@ public class FySummaryApprover
     
     [Column("rejected_by_approver")]
     public int RejectedByApprover { get; set; }
+
+    [Column("bill_amount")]
+    public decimal BillAmount { get; set; }
+
+    [Column("forwarded_amount")]
+    public decimal ForwardedAmount { get; set; }
+
+    [Column("fto_amount")]
+    public decimal FtoAmount { get; set; }
 }
 
 [Table("fy_summary_operator", Schema = "dashboard")]
@@ -89,4 +107,13 @@ public class FySummaryOperator
     
     [Column("rejected_by_approver")]
     public int RejectedByApprover { get; set; }
+
+    [Column("bill_amount")]
+    public decimal BillAmount { get; set; }
+
+    [Column("forwarded_amount")]
+    public decimal ForwardedAmount { get; set; }
+
+    [Column("fto_amount")]
+    public decimal FtoAmount { get; set; }
 }
