@@ -46,12 +46,11 @@ public class DashboardController : ControllerBase
         return Ok(metrics);
     }
 
-    [HttpGet("comparison")]
-    public async Task<IActionResult> GetComparison([FromQuery] int fy, [FromQuery] string ddoCode, [FromQuery] string userid, [FromQuery] DateTime start, [FromQuery] DateTime end)
+    [HttpGet("smart-metrics")]
+    public async Task<IActionResult> GetSmartMetrics([FromQuery] int fy, [FromQuery] string ddoCode, [FromQuery] string userid, [FromQuery] string rangeType, [FromQuery] DateTime start, [FromQuery] DateTime end)
     {
-        // 404 Fix: Restoring missing endpoint after refactor
-        var comparison = await _dashService.GetComparisonAsync(fy, ddoCode, userid, start.ToUniversalTime(), end.ToUniversalTime());
-        return Ok(comparison);
+        var metrics = await _dashService.GetComparisonSmartMetricsAsync(fy, ddoCode, userid, rangeType, start.ToUniversalTime(), end.ToUniversalTime());
+        return Ok(metrics);
     }
 
     [HttpPost("refresh-baseline")]

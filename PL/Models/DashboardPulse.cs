@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using MessagePack;
 
 namespace Dashboard.PL.Models;
 
@@ -7,6 +8,7 @@ namespace Dashboard.PL.Models;
  * Renamed properties directly to acronyms to ensure MessagePack 
  * and JSON consistency without additional attributes.
  */
+[MessagePackObject(keyAsPropertyName: true)]
 public class BasePulseMetrics
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -28,6 +30,7 @@ public class BasePulseMetrics
     public int? rb { get; set; } // rejBill
 }
 
+[MessagePackObject(keyAsPropertyName: true)]
 public class PressurePulseMetrics : BasePulseMetrics
 {
     public string sc { get; set; } = ""; // scope

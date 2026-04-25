@@ -13,6 +13,7 @@ public interface IDashboardService
     Task<IEnumerable<DashboardMetrics>> GetComparisonAsync(int fy, string ddoCode, string userid, DateTime start, DateTime end);
     Task RefreshBaselineAsync(string userid, bool isAuto = false);
     Task<DashboardMetrics> GetMetricsAsync(int fy, DateTime start, DateTime end);
+    Task<IEnumerable<DashboardMetrics>> GetComparisonSmartMetricsAsync(int fy, string ddoCode, string userid, string rangeType, DateTime start, DateTime end);
 }
 
 public class DashboardService : IDashboardService
@@ -71,5 +72,10 @@ public class DashboardService : IDashboardService
     public async Task<DashboardMetrics> GetMetricsAsync(int fy, DateTime start, DateTime end)
     {
         return await _repo.GetAdminMetricsAsync(fy, start, end);
+    }
+
+    public async Task<IEnumerable<DashboardMetrics>> GetComparisonSmartMetricsAsync(int fy, string ddoCode, string userid, string rangeType, DateTime start, DateTime end)
+    {
+        return await _repo.GetComparisonSmartMetricsAsync(fy, ddoCode, userid, rangeType, start, end);
     }
 }
