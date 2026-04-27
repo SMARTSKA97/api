@@ -35,6 +35,7 @@ public class FtoRepository : IFtoRepository
 
         return await query
             .OrderByDescending(f => f.FtoCreationDate)
+            .Where(f => f.FtoStatus == 0)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
