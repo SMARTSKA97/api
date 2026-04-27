@@ -16,13 +16,20 @@ public class LoadTestService : ILoadTestService
     private CancellationTokenSource? _cts;
     private readonly ConcurrentQueue<long> _latencies = new();
     private readonly ConcurrentQueue<long> _dbTimes = new();
-    private long _successCount = 0;
-    private long _errorCount = 0;
+    
+    // Persistent counters (Static to survive DI resets if process stays alive)
+    private static long _totalSuccess = 0;
+    private static long _totalError = 0;
+    
+    private long _lastReportedTotal = 0;
     private int _concurrency = 0;
     private bool _isAutoScale = false;
     private string _status = "Stopped";
 
     private readonly System.Timers.Timer _reportTimer;
+    private readonly Stopwatch _reportStopwatch = new();
+    
+    private LoadTestMetrics _cachedMetrics = new();
 
     public LoadTestService(
         IServiceProvider serviceProvider,
@@ -45,8 +52,11 @@ public class LoadTestService : ILoadTestService
         _status = "Running";
         _concurrency = concurrency;
         _isAutoScale = autoScale;
-        _successCount = 0;
-        _errorCount = 0;
+        
+        // Reset counters only on explicit Start
+        Interlocked.Exchange(ref _totalSuccess, 0);
+        Interlocked.Exchange(ref _totalError, 0);
+        _lastReportedTotal = 0;
         
         // Clear history
         while (_latencies.TryDequeue(out _)) { }
@@ -59,78 +69,92 @@ public class LoadTestService : ILoadTestService
             _ = Task.Run(() => WorkerLoop(_cts.Token));
         }
 
+        _reportStopwatch.Restart();
         _reportTimer.Start();
     }
 
     public async Task StopAsync()
     {
-        if (_status != "Running") return;
+        if (_status != "Running" && _status != "Stopping") return;
 
-        _status = "Stopping";
+        _status = "Stopped";
         _cts?.Cancel();
         _reportTimer.Stop();
+        _reportStopwatch.Stop();
         
-        // Final report with Stopped status
-        _status = "Stopped";
         _concurrency = 0;
         await ReportMetricsAsync();
     }
 
     public LoadTestMetrics GetCurrentStatus()
     {
-        return CalculateMetrics();
+        return _cachedMetrics;
     }
 
     private async Task WorkerLoop(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
-            var swTotal = Stopwatch.StartNew();
             try
             {
                 using var scope = _serviceProvider.CreateScope();
                 var simulation = scope.ServiceProvider.GetRequiredService<ISimulationService>();
                 
-                var swDb = Stopwatch.StartNew();
-                await simulation.RunCycleAsync(ct);
-                swDb.Stop();
-                
-                _dbTimes.Enqueue(swDb.ElapsedMilliseconds);
-                Interlocked.Increment(ref _successCount);
+                // Run multiple cycles per scope for efficiency
+                for (int i = 0; i < 10; i++)
+                {
+                    if (ct.IsCancellationRequested) break;
+
+                    var swTotal = Stopwatch.StartNew();
+                    try
+                    {
+                        var swDb = Stopwatch.StartNew();
+                        await simulation.RunCycleAsync(ct);
+                        swDb.Stop();
+                        
+                        _dbTimes.Enqueue(swDb.ElapsedMilliseconds);
+                        Interlocked.Increment(ref _totalSuccess);
+                    }
+                    catch (OperationCanceledException) { break; }
+                    catch (Exception)
+                    {
+                        Interlocked.Increment(ref _totalError);
+                    }
+                    finally
+                    {
+                        swTotal.Stop();
+                        _latencies.Enqueue(swTotal.ElapsedMilliseconds);
+                    }
+                }
             }
-            catch (OperationCanceledException) { } // Shutdown
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Load worker failed");
-                Interlocked.Increment(ref _errorCount);
-            }
-            finally
-            {
-                swTotal.Stop();
-                _latencies.Enqueue(swTotal.ElapsedMilliseconds);
+                _logger.LogWarning("Worker loop scope error: {Msg}", ex.Message);
+                await Task.Delay(1000, ct);
             }
 
-            // Small cooldown to prevent thread starvation if needed
             await Task.Delay(10, ct);
         }
     }
 
     private async Task ReportMetricsAsync()
     {
-        var metrics = CalculateMetrics();
+        // 1. Recalculate Metrics (Thread-safe snapshot)
+        _cachedMetrics = RecalculateMetricsInternal();
         
+        // 2. Get Resource Vitals
         using var scope = _serviceProvider.CreateScope();
         var monitor = scope.ServiceProvider.GetRequiredService<IResourceMonitor>();
         var (cpu, ram, db) = await monitor.GetMetricsAsync();
 
         var pulse = new EnginePulse
         {
-            Metrics = metrics,
-            Vitals = new EngineVitals
+            metrics = _cachedMetrics,
+            vitals = new EngineVitals
             {
-                Cpu = cpu,
-                Ram = ram,
-                DbConnections = db
+                cpu = cpu,
+                ram = ram,
+                dbConn = db
             }
         };
 
@@ -138,16 +162,12 @@ public class LoadTestService : ILoadTestService
         {
             await _updateService.PushPulseAsync("Engine:Admin", "EngineUpdate", pulse);
 
-            // Auto-Scale logic
-            if (_isAutoScale && _status == "Running" && metrics.AvgLatency < 200 && metrics.Bottleneck == "None")
+            // Auto-Scale logic (POC scale limits)
+            if (_isAutoScale && _status == "Running" && _cachedMetrics.avgLatency < 250 && _cachedMetrics.bottleneck == "None")
             {
-                // Increase by 10% or at least 10 workers
-                int increase = Math.Max(10, (int)(_concurrency * 0.1));
-                
-                // Limit to 5000 workers to prevent extreme starvation
-                if (_concurrency + increase <= 5000)
+                int increase = Math.Max(5, (int)(_concurrency * 0.1));
+                if (_concurrency + increase <= 1000) 
                 {
-                    _logger.LogInformation("Auto-scaling: Adding {Increase} workers. New total: {Total}", increase, _concurrency + increase);
                     for (int i = 0; i < increase; i++)
                     {
                         _ = Task.Run(() => WorkerLoop(_cts!.Token));
@@ -156,43 +176,51 @@ public class LoadTestService : ILoadTestService
                 }
             }
         }
-        catch (OperationCanceledException) { }
-        catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
             _logger.LogWarning("Engine Report Failed: {Msg}", ex.Message);
         }
     }
 
-    private LoadTestMetrics CalculateMetrics()
+    private LoadTestMetrics RecalculateMetricsInternal()
     {
-        // Calculate RPS based on the last second (approximate from queue size change or just throughput)
-        // For simplicity, we'll use a snapshot of recent latencies
-        var recentLatencies = _latencies.TakeLast(Math.Max(1, _concurrency * 2)).ToList();
-        var recentDbTimes = _dbTimes.TakeLast(Math.Max(1, _concurrency * 2)).ToList();
+        // Calculate Real RPS (Delta based on actual wall-clock time)
+        long currentTotal = Interlocked.Read(ref _totalSuccess) + Interlocked.Read(ref _totalError);
+        double elapsedSeconds = _reportStopwatch.Elapsed.TotalSeconds;
+        _reportStopwatch.Restart();
+
+        long delta = currentTotal - _lastReportedTotal;
+        _lastReportedTotal = currentTotal;
+
+        int rpsValue = (int)(delta / (elapsedSeconds > 0 ? elapsedSeconds : 1));
+
+        // Sample Latencies (Keep it lean)
+        var recentLatencies = _latencies.TakeLast(200).ToList();
+        var recentDbTimes = _dbTimes.TakeLast(200).ToList();
 
         double avgLatency = recentLatencies.Any() ? recentLatencies.Average() : 0;
         double avgDb = recentDbTimes.Any() ? recentDbTimes.Average() : 0;
 
-        // Prune queues to keep memory stable
-        while (_latencies.Count > 1000) _latencies.TryDequeue(out _);
-        while (_dbTimes.Count > 1000) _dbTimes.TryDequeue(out _);
+        // Prune Queues
+        while (_latencies.Count > 500) _latencies.TryDequeue(out _);
+        while (_dbTimes.Count > 500) _dbTimes.TryDequeue(out _);
 
+        // Bottleneck Analysis
         string bottleneck = "None";
-        if (avgDb > avgLatency * 0.7) bottleneck = "DB";
+        if (avgDb > avgLatency * 0.75 && avgLatency > 50) bottleneck = "DB";
         else if (avgLatency > 500) bottleneck = "API";
 
         return new LoadTestMetrics
         {
-            Status = _status,
-            Rps = recentLatencies.Count, // Transactions processed in the sample period
-            AvgLatency = avgLatency,
-            DbTimeMs = avgDb,
-            ApiTimeMs = avgLatency - avgDb,
-            SuccessCount = _successCount,
-            ErrorCount = _errorCount,
-            ActiveWorkers = _concurrency,
-            Bottleneck = bottleneck
+            status = _status,
+            rps = rpsValue,
+            avgLatency = avgLatency,
+            dbTimeMs = avgDb,
+            apiTimeMs = Math.Max(0, avgLatency - avgDb),
+            successCount = Interlocked.Read(ref _totalSuccess),
+            errorCount = Interlocked.Read(ref _totalError),
+            activeWorkers = _concurrency,
+            bottleneck = bottleneck
         };
     }
 }

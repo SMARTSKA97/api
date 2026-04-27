@@ -3,61 +3,46 @@ using MessagePack;
 
 namespace Dashboard.BLL.Models;
 
-[MessagePackObject]
+[MessagePackObject(keyAsPropertyName: true)]
 public class LoadTestMetrics
 {
-    [Key("status")]
-    public string Status { get; set; } = "Stopped"; // Stopped, Running, Stopping
+    public string status { get; set; } = "Stopped"; // Stopped, Running, Stopping
 
-    [Key("rps")]
-    public int Rps { get; set; }
+    public int rps { get; set; }
 
-    [Key("avg_latency")]
-    public double AvgLatency { get; set; }
+    public double avgLatency { get; set; }
 
-    [Key("success")]
-    public long SuccessCount { get; set; }
+    public long successCount { get; set; }
 
-    [Key("errors")]
-    public long ErrorCount { get; set; }
+    public long errorCount { get; set; }
 
-    [Key("workers")]
-    public int ActiveWorkers { get; set; }
+    public int activeWorkers { get; set; }
 
     // Diagnostic Segments
-    [Key("db_ms")]
-    public double DbTimeMs { get; set; }
+    public double dbTimeMs { get; set; }
 
-    [Key("api_ms")]
-    public double ApiTimeMs { get; set; }
+    public double apiTimeMs { get; set; }
 
     // Bottleneck Analysis
-    [Key("bottleneck")]
-    public string Bottleneck { get; set; } = "None"; // None, DB, API, SignalR, UI
+    public string bottleneck { get; set; } = "None"; // None, DB, API, SignalR, UI
 }
 
-[MessagePackObject]
+[MessagePackObject(keyAsPropertyName: true)]
 public class EnginePulse
 {
-    [Key("sc")]
-    public string Scope { get; set; } = "Engine";
+    public string sc { get; set; } = "Engine";
 
-    [Key("metrics")]
-    public LoadTestMetrics Metrics { get; set; } = new();
+    public LoadTestMetrics metrics { get; set; } = new();
 
-    [Key("vitals")]
-    public EngineVitals Vitals { get; set; } = new();
+    public EngineVitals vitals { get; set; } = new();
 }
 
-[MessagePackObject]
+[MessagePackObject(keyAsPropertyName: true)]
 public class EngineVitals
 {
-    [Key("cpu")]
-    public int Cpu { get; set; }
+    public int cpu { get; set; }
 
-    [Key("ram")]
-    public int Ram { get; set; }
+    public int ram { get; set; }
 
-    [Key("db_conn")]
-    public int DbConnections { get; set; }
+    public int dbConn { get; set; }
 }
